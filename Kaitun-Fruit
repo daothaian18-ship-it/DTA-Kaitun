@@ -1,6 +1,4 @@
--- DTA Auto Fruit | Không menu | Tự chọn phe -> bay tới trái -> nhặt -> cất kho -> hết trái thì đổi server
 repeat task.wait() until game:IsLoaded()
-
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local TS = game:GetService("TweenService")
@@ -8,24 +6,16 @@ local RunS = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local plr = Players.LocalPlayer
 local CommF = RS:WaitForChild("Remotes"):WaitForChild("CommF_")
-
--- ========== CẤU HÌNH: đọc từ getgenv().Config do người dùng khai báo trước khi chạy script ==========
--- Ví dụ người dùng dán:
---   getgenv().Config = { ["Webhook"] = { ["URL"] = "link webhook của họ" } }
---   loadstring(game:HttpGet("link raw github của script này"))()
 local CFG = (getgenv and getgenv().Config) or _G.Config or {}
 local WH = type(CFG.Webhook) == "table" and CFG.Webhook or {}
 local webhookURL = WH.URL or WH.Url or (type(CFG.Webhook) == "string" and CFG.Webhook) or ""
-
 local SETTINGS = {
-	Team = CFG.Team or "Marines",     -- "Marines" hoặc "Pirates"
-	Speed = tonumber(CFG.Speed) or 150, -- tốc độ bay (vừa phải, đỡ bị kick)
-	WaitBeforeHop = 0,                -- giây không thấy trái thì đổi server
-	Webhook = tostring(webhookURL),   -- để trống = tắt báo Discord
-	MaxPlayers = tonumber(CFG.MaxPlayers) or 12, -- chỉ vào server ít hơn số người này
+	Team = CFG.Team or "Marines",
+	Speed = tonumber(CFG.Speed) or 150,
+	WaitBeforeHop = 0,
+	Webhook = tostring(webhookURL),
+	MaxPlayers = tonumber(CFG.MaxPlayers) or 12,
 }
-
--- ========== Bảng trạng thái (thời gian, phe, trái, hành động) - không phải menu ==========
 local gui = Instance.new("ScreenGui")
 gui.Name = "DTA_Status"
 gui.ResetOnSpawn = false
@@ -51,24 +41,21 @@ lbl.Font = Enum.Font.GothamBold
 lbl.TextSize = 26
 lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
 lbl.TextStrokeTransparency = 0
-local currentStatus = "đang khởi động..."
+local currentStatus = "\196\145ang kh\225\187\159i \196\145\225\187\153ng..."
 local function status(t) currentStatus = t end
-
 local startTick = tick()
 task.spawn(function()
 	while task.wait(0.5) do
 		local e = math.floor(tick() - startTick)
 		local fruits = 0
 		for _, v in ipairs(workspace:GetChildren()) do
-			if v:IsA("Tool") and v.Name:find("Fruit") then fruits += 1 end
+			if v:IsA("Tool") and v.Name:find("Fruit") then fruits = fruits + 1 end
 		end
-		lbl.Text = string.format("Time : %dh%dm%ds\nTeam: %s | Trái trên map: %d\n%s",
+		lbl.Text = string.format("Time : %dh%dm%ds\nTeam: %s | Tr\195\161i tr\195\170n map: %d\n%s",
 			e // 3600, (e % 3600) // 60, e % 60,
-			plr.Team and plr.Team.Name or "Chưa chọn", fruits, currentStatus)
+			plr.Team and plr.Team.Name or "Ch\198\176a ch\225\187\141n", fruits, currentStatus)
 	end
 end)
-
--- ========== Tự chọn phe ==========
 local function hasTeam()
 	return plr.Team and (plr.Team.Name == "Marines" or plr.Team.Name == "Pirates")
 end
@@ -84,8 +71,6 @@ task.spawn(function()
 		end)
 	end
 end)
-
--- ========== Noclip khi bay ==========
 local flying = false
 RunS.Stepped:Connect(function()
 	if flying and plr.Character then
@@ -94,13 +79,10 @@ RunS.Stepped:Connect(function()
 		end
 	end
 end)
-
 local function getHRP()
 	local c = plr.Character
 	return c and c:FindFirstChild("HumanoidRootPart"), c and c:FindFirstChildOfClass("Humanoid")
 end
-
--- ========== Tìm trái trên map ==========
 local function findFruit()
 	local hrp = getHRP()
 	if not hrp then return nil end
@@ -116,31 +98,25 @@ local function findFruit()
 	end
 	return best
 end
-
 local function flyTo(fruit)
 	local hrp, hum = getHRP()
 	if not hrp or not hum or hum.Health <= 0 then return end
 	local h = fruit:FindFirstChild("Handle")
 	if not h then return end
-
 	flying = true
 	local bv = Instance.new("BodyVelocity")
 	bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
 	bv.Velocity = Vector3.zero
 	bv.Parent = hrp
-
 	local dist = (h.Position - hrp.Position).Magnitude
 	local tween = TS:Create(hrp, TweenInfo.new(dist / SETTINGS.Speed, Enum.EasingStyle.Linear),
 		{ CFrame = h.CFrame })
 	tween:Play()
 	local t0 = tick()
 	while tween.PlaybackState == Enum.PlaybackState.Playing and fruit.Parent == workspace and tick() - t0 < 60 do
-		-- cập nhật nếu trái bị di chuyển
 		task.wait(0.1)
 	end
 	tween:Cancel()
-
-	-- chạm vào trái để nhặt
 	if fruit.Parent == workspace and h.Parent then
 		for _ = 1, 10 do
 			hrp.CFrame = h.CFrame
@@ -157,8 +133,6 @@ local function flyTo(fruit)
 	bv:Destroy()
 	flying = false
 end
-
--- ========== Cất trái vào kho (kho đầy / lỗi thì bỏ qua, mỗi trái chỉ thử 1 lần) ==========
 local tried = setmetatable({}, { __mode = "k" })
 local function storeAll()
 	local stored = 0
@@ -169,7 +143,7 @@ local function storeAll()
 			local ok, res = pcall(function()
 				return CommF:InvokeServer("StoreFruit", tool:GetAttribute("OriginalName") or tool.Name, tool)
 			end)
-			if ok and res then stored += 1 end
+			if ok and res then stored = stored + 1 end
 		end
 	end
 	for _, t in ipairs(plr.Backpack:GetChildren()) do try(t) end
@@ -178,10 +152,7 @@ local function storeAll()
 	end
 	return stored
 end
-
--- ========== Báo Discord khi lụm được trái ==========
 local HttpService = game:GetService("HttpService")
--- Giá Beli (theo trí nhớ, có thể lệch nếu game cập nhật giá)
 local FRUIT_PRICE = {
 	["Rocket"]=5000, ["Spin"]=7500, ["Blade"]=30000, ["Spring"]=60000, ["Bomb"]=80000,
 	["Smoke"]=100000, ["Spike"]=180000, ["Flame"]=250000, ["Ice"]=350000, ["Sand"]=420000,
@@ -212,10 +183,8 @@ local function getIcon(tex)
 	return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. id .. "&width=150&height=150&format=png"
 end
 local httpReq = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
-
--- Gửi JSON tới webhook, trả về (thành công, thông tin lỗi)
 local function postJson(body)
-	if not httpReq then return false, "executor không hỗ trợ request" end
+	if not httpReq then return false, "executor kh\195\180ng h\225\187\151 tr\225\187\163 request" end
 	local ok, res = pcall(function()
 		return httpReq({
 			Url = SETTINGS.Webhook,
@@ -229,8 +198,6 @@ local function postJson(body)
 	if code and code >= 200 and code < 300 then return true, code end
 	return false, "HTTP " .. tostring(code) .. " " .. tostring(res and res.Body or ""):sub(1, 80)
 end
-
--- Gom các trái lụm trong cùng 1 server, gửi 1 tin duy nhất trước khi đổi server
 local batch = {}
 local batchFirst = nil
 local function queueFruit(name, tex)
@@ -238,55 +205,46 @@ local function queueFruit(name, tex)
 	batch[#batch + 1] = { name = name, tex = tex, price = FRUIT_PRICE[short] }
 	batchFirst = batchFirst or tick()
 end
-
 local function flushBatch()
 	if #batch == 0 then return end
 	if not SETTINGS.Webhook or SETTINGS.Webhook == "" then batch = {}; batchFirst = nil; return end
 	local items = batch
 	batch = {}
 	batchFirst = nil
-
 	table.sort(items, function(x, y) return (x.price or 0) > (y.price or 0) end)
 	local lines, total, unknown = {}, 0, false
 	for _, it in ipairs(items) do
-		if it.price then total += it.price else unknown = true end
-		lines[#lines + 1] = ("• **%s** — %s"):format(it.name, it.price and (commas(it.price) .. " Beli") or "không rõ giá")
+		if it.price then total = total + it.price else unknown = true end
+		lines[#lines + 1] = ("\226\128\162 **%s** \226\128\148 %s"):format(it.name, it.price and (commas(it.price) .. " Beli") or "kh\195\180ng r\195\181 gi\195\161")
 	end
-
 	local embed = {
-		title = ("🍎 Lụm được %d trái ác quỷ!"):format(#items),
+		title = ("\240\159\141\142 L\225\187\165m \196\145\198\176\225\187\163c %d tr\195\161i \195\161c qu\225\187\183!"):format(#items),
 		description = table.concat(lines, "\n"),
 		color = 0xD4A55A,
 		fields = {
-			{ name = "Tài khoản", value = plr.Name, inline = true },
-			{ name = "Số trái", value = tostring(#items), inline = true },
-			{ name = "Tổng giá trị", value = commas(total) .. " Beli" .. (unknown and "+" or ""), inline = true },
+			{ name = "T\195\160i kho\225\186\163n", value = plr.Name, inline = true },
+			{ name = "S\225\187\145 tr\195\161i", value = tostring(#items), inline = true },
+			{ name = "T\225\187\149ng gi\195\161 tr\225\187\139", value = commas(total) .. " Beli" .. (unknown and "+" or ""), inline = true },
 		},
-		footer = { text = "DTA HUB • " .. #Players:GetPlayers() .. " người trong server" },
+		footer = { text = "DTA HUB \226\128\162 " .. #Players:GetPlayers() .. " ng\198\176\225\187\157i trong server" },
 		timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
 	}
-	-- ảnh: lấy icon của trái đắt nhất
 	local icon = getIcon(items[1].tex)
 	if icon then embed.thumbnail = { url = icon } end
-
 	local ok, info = postJson({ username = "DTA HUB", embeds = { embed } })
 	if not ok and icon then
 		embed.thumbnail = nil
 		ok, info = postJson({ username = "DTA HUB", embeds = { embed } })
 	end
 	if not ok then
-		postJson({ content = ("🍎 **%s** lụm %d trái: %s"):format(plr.Name, #items, table.concat(lines, " | ")) })
+		postJson({ content = ("\240\159\141\142 **%s** l\225\187\165m %d tr\195\161i: %s"):format(plr.Name, #items, table.concat(lines, " | ")) })
 	end
 end
-
--- Phòng hờ: nếu ở lại server quá lâu mà chưa gửi thì vẫn gửi
 task.spawn(function()
 	while task.wait(5) do
 		if batchFirst and tick() - batchFirst > 90 then flushBatch() end
 	end
 end)
-
--- Chụp danh sách tool hiện có, rồi chờ tool MỚI xuất hiện (không phụ thuộc tên)
 local function toolSnapshot()
 	local set = {}
 	for _, container in ipairs({ plr.Backpack, plr.Character }) do
@@ -314,17 +272,13 @@ local function waitNewFruit(before, timeout)
 	until tick() - t0 > timeout
 	return nil
 end
-
--- ========== Đổi server (tự viết, 3 lớp dự phòng, luôn có đường thoát) ==========
 local HttpService = game:GetService("HttpService")
 local hopping = false
 local hopMsg = ""
 local tpFailed = false
 TeleportService.TeleportInitFailed:Connect(function() tpFailed = true end)
-
 local function getServers()
 	local list = {}
-	-- Lớp 1: server browser của chính game Blox Fruits
 	pcall(function()
 		for _ = 1, 3 do
 			local servers = RS.__ServerBrowser:InvokeServer(math.random(1, 30))
@@ -335,7 +289,6 @@ local function getServers()
 			if #list >= 10 then break end
 		end
 	end)
-	-- Lớp 2: API Roblox
 	if #list == 0 then
 		pcall(function()
 			local url = ("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(game.PlaceId)
@@ -353,52 +306,43 @@ local function getServers()
 	end
 	return list
 end
-
 local function waitTeleport()
 	tpFailed = false
 	local t0 = tick()
 	while not tpFailed and tick() - t0 < 10 do task.wait() end
 end
-
 local function hop()
 	if hopping then return end
 	hopping = true
 	task.spawn(function()
 		storeAll()
-		flushBatch() -- gửi 1 tin gộp trước khi rời server
+		flushBatch()
 		local attempt = 0
 		while true do
-			attempt += 1
-			hopMsg = ("đang tìm server (lần %d)..."):format(attempt)
+			attempt = attempt + 1
+			hopMsg = ("\196\145ang t\195\172m server (l\225\186\167n %d)..."):format(attempt)
 			local list = getServers()
 			for _, id in ipairs(list) do
-				hopMsg = "đang vào server " .. tostring(id):sub(1, 6) .. " (" .. #list .. " server)"
+				hopMsg = "\196\145ang v\195\160o server " .. tostring(id):sub(1, 6) .. " (" .. #list .. " server)"
 				tpFailed = false
 				pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, id, plr) end)
 				waitTeleport()
 			end
-			-- Lớp 3: teleport ngẫu nhiên, luôn dùng được
-			hopMsg = "teleport ngẫu nhiên..."
+			hopMsg = "teleport ng\225\186\171u nhi\195\170n..."
 			tpFailed = false
 			pcall(function() TeleportService:Teleport(game.PlaceId, plr) end)
 			waitTeleport()
 		end
 	end)
 end
-
--- ========== Vòng lặp chính ==========
 task.spawn(function()
 	repeat task.wait(0.2) until hasTeam() and getHRP()
 	task.wait(0.5)
 	local emptySince = nil
-
 	while task.wait(0.1) do
 		local ok, err = pcall(function()
 			if hopping then status(hopMsg) return end
-			-- 1) cất trái đang cầm
-			if storeAll() > 0 then status("đã cất trái vào kho") end
-
-			-- 2) tìm và nhặt trái
+			if storeAll() > 0 then status("\196\145\195\163 c\225\186\165t tr\195\161i v\195\160o kho") end
 			local fruit = findFruit()
 			if fruit then
 				emptySince = nil
@@ -406,12 +350,11 @@ task.spawn(function()
 				local ftex = nil
 				pcall(function() ftex = fruit.TextureId end)
 				local before = toolSnapshot()
-				status("bay tới " .. fname)
+				status("bay t\225\187\155i " .. fname)
 				flyTo(fruit)
-				-- lụm được (có tool mới trong túi) thì báo Discord, chạy nền
 				local got = waitNewFruit(before, 4)
 				if got then
-					status("đã lụm " .. fname)
+					status("\196\145\195\163 l\225\187\165m " .. fname)
 					local tex = (ftex and ftex ~= "") and ftex or got.TextureId
 					queueFruit(fname, tex)
 				end
@@ -420,7 +363,7 @@ task.spawn(function()
 			else
 				emptySince = emptySince or tick()
 				local left = SETTINGS.WaitBeforeHop - (tick() - emptySince)
-				status(string.format("không có trái (%.0fs)", math.max(left, 0)))
+				status(string.format("kh\195\180ng c\195\179 tr\195\161i (%.0fs)", math.max(left, 0)))
 				if left <= 0 then hop() end
 			end
 		end)
