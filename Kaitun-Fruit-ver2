@@ -1,16 +1,14 @@
 -- ===== VERIFY KEY (DTA) =====
--- Dung: getgenv().Key = "1ababfcbe906ffebedeb513a"  (key cua tai khoan tren web, hoac de trong de hien bang nhap key)
--- Cu 30s kiem tra thoi gian con lai, het thoi gian se kick khoi server.
--- Key dung 1 lan se duoc luu vao file DTA_Key.txt de lan sau khong phai nhap lai.
+-- Dat key o ngoai, truoc khi chay script:
+--   getgenv().Key = "1ababfcbe906ffebedeb513a"
+-- Sai key -> kick "Sai key". Het thoi gian -> kick "Hết thời gian dùng".
+-- Cu 30s kiem tra lai thoi gian con lai.
 do
     repeat task.wait() until game:IsLoaded()
 
     local API_URL = "https://dtahub.vercel.app/api/verify?key="
-    local SITE_LINK = "https://dtahub.vercel.app"
-    local KEY_FILE = "DTA_Key.txt"
     local HttpService = game:GetService("HttpService")
-    local Players = game:GetService("Players")
-    local plr = Players.LocalPlayer
+    local plr = game:GetService("Players").LocalPlayer
 
     local function trim(s) return tostring(s or ""):match("^%s*(.-)%s*$") end
 
@@ -24,178 +22,62 @@ do
         return m .. " phut"
     end
 
-    -- Gui key len server -> (dung/sai, thong bao, loi mang?)
+    -- Kick khoi server; neu Kick bi chan thi dong game
+    local function kickOut(reason)
+        pcall(function() plr:Kick(reason) end)
+        task.wait(1.5)
+        pcall(function() game:Shutdown() end)
+    end
+
+    -- Tra ve: ok, loi mang?, het thoi gian?, so giay con lai
     local function check(key)
         key = trim(key)
-        if key == "" then return false, "Ban chua nhap key", false, false end
+        if key == "" then return false, false, false end
 
         local okReq, res = pcall(function()
             return game:HttpGet(API_URL .. HttpService:UrlEncode(key))
         end)
-        if not okReq then return false, "Khong ket noi duoc server xac thuc", true, false end
+        if not okReq then return false, true, false end
 
         local okJson, data = pcall(function() return HttpService:JSONDecode(res) end)
-        if not okJson or type(data) ~= "table" then
-            return false, "Server tra ve du lieu loi", true, false
-        end
+        if not okJson or type(data) ~= "table" then return false, true, false end
 
-        local msg = tostring(data.message or "Key khong hop le")
-        if data.success == true and data.remaining then
-            msg = msg .. " (con " .. fmt(data.remaining) .. ")"
-        end
-        return data.success == true, msg, false, data.expired == true
+        return data.success == true, false, data.expired == true, data.remaining
     end
 
-    -- Luu / doc key tu file (neu executor ho tro)
-    local function loadSaved()
-        if readfile and isfile then
-            local ok, v = pcall(function() if isfile(KEY_FILE) then return readfile(KEY_FILE) end end)
-            if ok and v then return trim(v) end
-        end
-        return ""
-    end
-    local function saveKey(k) if writefile then pcall(writefile, KEY_FILE, k) end end
-    local function clearSaved() if delfile and isfile then pcall(function() if isfile(KEY_FILE) then delfile(KEY_FILE) end end) end end
+    local key = trim(getgenv().Key)
+    local ok, netErr, expired, remaining
 
-    -- Moi 30s kiem tra thoi gian con lai; het thoi gian -> kick khoi server
-    local function startWatch()
-        task.spawn(function()
-            while true do
-                task.wait(30)
-                local _, _, _, expired = check(getgenv().Key)
-                if expired then
-                    pcall(function() plr:Kick("Hết thời gian dùng") end)
-                    break
-                end
+    for i = 1, 3 do -- thu lai neu loi mang
+        ok, netErr, expired, remaining = check(key)
+        if not netErr then break end
+        task.wait(2)
+    end
+
+    if not ok then
+        if expired then
+            kickOut("Hết thời gian dùng")
+        elseif netErr then
+            kickOut("Không kết nối được server xác thực")
+        else
+            kickOut("Sai key")
+        end
+        error("[KEY] xac thuc that bai", 0) -- dung luon script
+    end
+
+    print("[KEY] Hop le, con " .. fmt(remaining))
+
+    -- Moi 30s kiem tra thoi gian con lai
+    task.spawn(function()
+        while true do
+            task.wait(30)
+            local good, err, exp = check(getgenv().Key)
+            if not good and not err then
+                kickOut(exp and "Hết thời gian dùng" or "Sai key")
+                break
             end
-        end)
-    end
-
-    local preKey = trim(getgenv().Key)
-    if preKey == "" then preKey = loadSaved() end
-    local hadKey = preKey ~= ""
-    local ok, msg, netErr = check(preKey)
-
-    if ok then
-        saveKey(preKey)
-        getgenv().Key = preKey
-        startWatch()
-        print("[KEY] " .. msg)
-    else
-        if hadKey and not netErr then clearSaved() end -- key sai/het han thi xoa file luu
-
-        local gui = Instance.new("ScreenGui")
-        gui.Name = "DTA_Key"
-        gui.ResetOnSpawn = false
-        gui.IgnoreGuiInset = true
-        pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
-        if not gui.Parent then gui.Parent = plr:WaitForChild("PlayerGui") end
-
-        local frame = Instance.new("Frame", gui)
-        frame.AnchorPoint = Vector2.new(0.5, 0.5)
-        frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-        frame.Size = UDim2.new(0, 340, 0, 260)
-        frame.BackgroundColor3 = Color3.fromRGB(30, 41, 59)
-        frame.BorderSizePixel = 0
-        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
-
-        local title = Instance.new("TextLabel", frame)
-        title.Size = UDim2.new(1, 0, 0, 50)
-        title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
-        title.TextSize = 26
-        title.Text = "DTA Key"
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
-
-        local box = Instance.new("TextBox", frame)
-        box.Position = UDim2.new(0, 20, 0, 58)
-        box.Size = UDim2.new(1, -40, 0, 40)
-        box.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-        box.BorderSizePixel = 0
-        box.Font = Enum.Font.Gotham
-        box.TextSize = 16
-        box.PlaceholderText = "Nhap key (24 ky tu)"
-        box.PlaceholderColor3 = Color3.fromRGB(120, 130, 150)
-        box.Text = hadKey and preKey or ""
-        box.TextColor3 = Color3.fromRGB(255, 255, 255)
-        box.ClearTextOnFocus = false
-        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
-
-        local btn = Instance.new("TextButton", frame)
-        btn.Position = UDim2.new(0, 20, 0, 108)
-        btn.Size = UDim2.new(1, -40, 0, 40)
-        btn.BackgroundColor3 = Color3.fromRGB(99, 102, 241)
-        btn.BorderSizePixel = 0
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 17
-        btn.Text = "Nhap Key"
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-
-        local getKeyBtn = Instance.new("TextButton", frame)
-        getKeyBtn.Position = UDim2.new(0, 20, 0, 156)
-        getKeyBtn.Size = UDim2.new(1, -40, 0, 36)
-        getKeyBtn.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
-        getKeyBtn.BorderSizePixel = 0
-        getKeyBtn.Font = Enum.Font.GothamBold
-        getKeyBtn.TextSize = 15
-        getKeyBtn.Text = "Lay Key"
-        getKeyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        Instance.new("UICorner", getKeyBtn).CornerRadius = UDim.new(0, 8)
-
-        local info = Instance.new("TextLabel", frame)
-        info.Position = UDim2.new(0, 20, 0, 200)
-        info.Size = UDim2.new(1, -40, 0, 44)
-        info.BackgroundTransparency = 1
-        info.Font = Enum.Font.GothamMedium
-        info.TextSize = 14
-        info.TextWrapped = true
-        info.TextColor3 = Color3.fromRGB(248, 113, 113)
-        info.Text = hadKey and msg or ""
-
-        local verified, busy = false, false
-        local function submit()
-            if busy then return end
-            busy = true
-            info.TextColor3 = Color3.fromRGB(203, 213, 225)
-            info.Text = "Dang kiem tra..."
-            local k = trim(box.Text)
-            local good, m = check(k)
-            if good then
-                getgenv().Key = k
-                saveKey(k)
-                info.TextColor3 = Color3.fromRGB(74, 222, 128)
-                info.Text = m
-                task.wait(1)
-                gui:Destroy()
-                verified = true
-            else
-                info.TextColor3 = Color3.fromRGB(248, 113, 113)
-                info.Text = m
-            end
-            busy = false
         end
-
-        btn.MouseButton1Click:Connect(submit)
-        box.FocusLost:Connect(function(enter) if enter then submit() end end)
-
-        getKeyBtn.MouseButton1Click:Connect(function()
-            local copyFn = setclipboard or (Clipboard and Clipboard.set) or toclipboard
-            local copied = false
-            if copyFn then copied = pcall(copyFn, SITE_LINK) end
-            info.TextColor3 = Color3.fromRGB(96, 165, 250)
-            if copied then
-                info.Text = "Da sao chep link, dan vao trinh duyet: " .. SITE_LINK
-            else
-                info.Text = "Khong sao chep duoc, hay tu mo: " .. SITE_LINK
-            end
-        end)
-
-        -- Cho toi khi nhap dung key moi chay tiep code phia duoi
-        repeat task.wait(0.2) until verified
-        startWatch()
-        print("[KEY] Xac thuc thanh cong")
-    end
+    end)
 end
 -- ======================
 
